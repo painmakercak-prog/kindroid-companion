@@ -18,7 +18,7 @@ test("a pasted key and the open Connections panel recover immediately after a re
   assert.equal(writeSettingsDraft(storage, firstEntry, 1000), true);
   // Reload before any timer, blur, visibility handler, or network request runs.
   const restored = readSettingsDraft(storage, 1001);
-  assert.deepEqual(restored, firstEntry);
+  assert.deepEqual(restored, { ...firstEntry, values: { ...firstEntry.values, provider: "gemma" } });
   restored.values.kinId = "kin-copied-from-other-app";
   writeSettingsDraft(storage, restored, 1002);
   assert.equal(readSettingsDraft(storage, 1003).values.kindroidKey, firstEntry.values.kindroidKey);

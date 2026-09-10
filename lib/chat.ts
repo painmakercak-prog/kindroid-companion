@@ -1,13 +1,11 @@
 import { getRawDb } from "@/db";
 import { ApiError, modelFetch, profile } from "./server";
 import { SYSTEM_PROMPT, ollamaPayload, readNdjson, answerDelta } from "./core.mjs";
-import { kindroidChat } from "./kindroid";
 
 export async function chat(user: string, input: { id?: string; text?: string }, request: Request) {
   const id = input.id, text = input.text?.trim();
   if (!id || !/^[a-f0-9-]{36}$/.test(id) || !text || text.length > 4000) throw new ApiError("Enter a message under 4,000 characters.");
   const { config, memory } = await profile(user), db = getRawDb();
-  if (config.provider === "kindroid") return kindroidChat(config, text, id, request);
   if (!config.modelUrl || !config.modelKey) throw new ApiError("Connect your Gemma model server in Connections.", 503);
   const existing = await db.prepare("SELECT id FROM turns WHERE id = ?").bind(id).first();
   if (existing) throw new ApiError("This turn was already submitted. Please send a new message.", 409);

@@ -8,14 +8,13 @@ import ts from "typescript";
 
 const origin = "https://companion.mydomain.com";
 const credentials = {
-  provider: "kindroid", kinId: "kin-runtime", kindroidKey: "kn_runtime_fixture",
+  provider: "gemma", modelUrl: "https://models.mydomain.com", modelKey: "gemma-runtime-fixture",
   deepgramKey: "deepgram-runtime-fixture", cartesiaKey: "cartesia-runtime-fixture", voiceId: "runtime-voice",
 };
 
 test("provider routes run in Workers and never forward credentials through redirects", async t => {
   const calls = [];
   let redirectHost = null;
-  let recover = false, sentText = "", sentAt = 0;
   const serverRoot = fileURLToPath(new URL("../dist/server/", import.meta.url));
   const modulePaths = (await readdir(serverRoot, { recursive: true }))
     .filter(path => path.endsWith(".js"))
@@ -35,15 +34,10 @@ test("provider routes run in Workers and never forward credentials through redir
       if (url.hostname === "api.deepgram.com" && url.pathname === "/v1/auth/grant") return Response.json({ access_token: "runtime-session-token" });
       if (url.hostname === "api.cartesia.ai" && url.pathname === "/voices") return Response.json([{ id: "runtime-voice", name: "Test voice" }]);
       if (url.hostname === "api.cartesia.ai" && url.pathname === "/tts/bytes") return new Response(new Uint8Array(1024));
-      if (url.hostname === "api.kindroid.ai" && url.pathname === "/v1/get-chat-messages") return Response.json({ messages: !recover ? [] : !url.searchParams.has("start_after_timestamp") ? [{ timestamp: sentAt - 86400000 }] : [
-        { sender_type: "user", timestamp: sentAt, message: sentText },
-        { sender_type: "ai", sender: credentials.kinId, timestamp: sentAt + 1, message: "The recovered reply works." },
-      ], pagination: { hasMore: false } });
-      if (url.hostname === "api.kindroid.ai" && url.pathname === "/v1/send-message") {
+      if (url.hostname === "models.mydomain.com" && url.pathname === "/api/chat") {
         const body = await request.json();
-        assert.equal(body.stream, false);
-        sentText = body.message; sentAt = Date.now() + 1;
-        return new Response(recover ? "" : "The connection works.", { headers: { "Content-Type": "text/plain" } });
+        assert.equal(body.model, "gemma4-heretical");
+        return new Response(JSON.stringify({ message: { content: "The connection works." }, done: true }) + "\n");
       }
       if (url.hostname === "models.mydomain.com" && url.pathname === "/api/tags") return Response.json({ models: [{ name: "gemma4-heretical" }] });
       return new Response("Unexpected destination", { status: 500 });
@@ -70,7 +64,7 @@ test("provider routes run in Workers and never forward credentials through redir
   assert.ok(checks.checks.every(result => result.ok), JSON.stringify(checks));
   assert.equal(calls.find(call => call.host === "api.deepgram.com").auth, "Token deepgram-runtime-fixture");
   assert.equal(calls.find(call => call.host === "api.cartesia.ai").auth, "Bearer cartesia-runtime-fixture");
-  assert.equal(calls.find(call => call.host === "api.kindroid.ai").auth, "Bearer kn_runtime_fixture");
+  assert.equal(calls.find(call => call.host === "models.mydomain.com").auth, "Bearer gemma-runtime-fixture");
 
   const chatReply = await request("chat", { id: crypto.randomUUID(), text: "Complete reply fixture." });
   assert.equal(chatReply.status, 200);
@@ -100,26 +94,25 @@ test("provider routes run in Workers and never forward credentials through redir
   };
   globalThis.fetch = async (url, init) => request(String(url).replace(/^\/api\//, ""), init?.body === undefined ? undefined : JSON.parse(init.body));
   try {
-    for (const recovery of [false, true]) {
-      recover = recovery;
-      const before = calls.filter(call => call.path === "/v1/send-message").length;
+    {
+      const before = calls.filter(call => call.path === "/api/chat").length;
       const errors = [], replies = [], phases = [];
       const session = new VoiceSession({ phase: value => phases.push(value), active() {}, reply: value => replies.push(value), error: value => { if (value) errors.push(value); }, level() {} });
       await session.turn("Speak this complete reply.", true);
       assert.deepEqual(errors, []);
-      assert.equal(replies.at(-1), recovery ? "The recovered reply works." : "The connection works.");
+      assert.equal(replies.at(-1), "The connection works.");
       assert.ok(phases.includes("speaking"));
       assert.equal(phases.at(-1), "idle");
-      assert.equal(calls.filter(call => call.path === "/v1/send-message").length - before, 1);
+      assert.equal(calls.filter(call => call.path === "/api/chat").length - before, 1);
       await session.dispose();
     }
-    assert.ok(played.filter(length => length > 1).length >= 2, "Both complete replies reach audio playback");
-  } finally { globalThis.fetch = originalFetch; globalThis.AudioContext = originalAudio; recover = false; }
+    assert.ok(played.filter(length => length > 1).length >= 1, "Gemma reply reaches audio playback");
+  } finally { globalThis.fetch = originalFetch; globalThis.AudioContext = originalAudio; }
 
   for (const [host, path, data, provider] of [
     ["api.deepgram.com", "listen-token", {}, "Deepgram"],
     ["api.cartesia.ai", "voices", undefined, "Cartesia"],
-    ["api.kindroid.ai", "chat", { id: crypto.randomUUID(), text: "Runtime fixture." }, "Kindroid"],
+    ["models.mydomain.com", "chat", { id: crypto.randomUUID(), text: "Runtime fixture." }, "Gemma"],
   ]) {
     redirectHost = host;
     const previous = calls.length;
@@ -133,5 +126,7 @@ test("provider routes run in Workers and never forward credentials through redir
   assert.equal((await request("settings", { provider: "gemma", modelUrl: "https://models.mydomain.com", modelKey: "gemma-runtime-fixture" })).status, 200);
   const gemmaChecks = await (await request("check", {})).json();
   assert.ok(gemmaChecks.checks.every(result => result.ok), JSON.stringify(gemmaChecks));
-  assert.ok(calls.every(call => call.host !== "unexpected.mydomain.com"));
+  assert.ok(calls.every(call => call.host !== "unexpected.mydomain.com" && call.host !== "api.kindroid.ai"));
+  const remembered = await db.prepare("SELECT assistant_text FROM turns WHERE status = ?").bind("completed").first();
+  assert.equal(remembered.assistant_text, "The connection works.");
 });

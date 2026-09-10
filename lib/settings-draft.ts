@@ -37,7 +37,7 @@ export function readSettingsDraft(storage: DraftStorage | undefined, now = Date.
     for (const key of textFields) {
       if (typeof stored.values[key] === "string" && stored.values[key].length <= 4000) values[key] = stored.values[key];
     }
-    if (stored.values.provider === "kindroid" || stored.values.provider === "gemma") values.provider = stored.values.provider;
+    if (stored.values.provider) values.provider = "gemma";
     if (typeof stored.values.thinking === "boolean") values.thinking = stored.values.thinking;
     const panel = stored.panel === "connections" || stored.panel === "memory" ? stored.panel : null;
     return { values, panel };

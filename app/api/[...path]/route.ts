@@ -2,7 +2,6 @@ import { getRawDb } from "@/db";
 import { identity, body, json, profile, publicConfig, saveProfile, failure, rateLimit, grant, cartesiaFetch, speech, modelFetch, ApiError } from "@/lib/server";
 import { chat, commitTurn } from "@/lib/chat";
 import { MODEL } from "@/lib/core.mjs";
-import { checkKindroid } from "@/lib/kindroid";
 
 export const dynamic = "force-dynamic";
 type Context = { params: Promise<{ path: string[] }> };
@@ -34,8 +33,7 @@ async function handle(request: Request, context: Context) {
     }
     if (request.method === "POST" && path === "commit") {
       const input = await body(request);
-      const { config } = await profile(user);
-      if (config.provider !== "kindroid") await commitTurn(user, input);
+      await commitTurn(user, input);
       return json({ ok: true });
     }
     const { config } = await profile(user);
@@ -61,7 +59,6 @@ async function handle(request: Request, context: Context) {
       await rateLimit(user, "check", 4);
       const checks = await Promise.allSettled([
         (async () => {
-          if (config.provider === "kindroid") return checkKindroid(config);
           const r = await modelFetch(config, "/api/tags", { signal: AbortSignal.timeout(12000) });
           if (!r.ok) throw new Error(`Model server returned ${r.status}.`);
           const data = await r.json() as { models?: { name: string }[] };
@@ -77,7 +74,7 @@ async function handle(request: Request, context: Context) {
           return "Cartesia generated audio";
         })(),
       ]);
-      return json({ checks: checks.map((r, i) => ({ provider: [config.provider === "kindroid" ? "Kindroid" : "Gemma", "Deepgram", "Cartesia"][i],
+      return json({ checks: checks.map((r, i) => ({ provider: ["Gemma", "Deepgram", "Cartesia"][i],
         ok: r.status === "fulfilled", message: r.status === "fulfilled" ? r.value : r.reason instanceof Error ? r.reason.message : "Connection failed" })) });
     }
     return json({ error: "Not found." }, 404);

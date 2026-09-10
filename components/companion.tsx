@@ -11,15 +11,15 @@ import { api, VoiceSession, type Phase } from "@/lib/voice";
 import { acknowledgeSettingsEdits, connectionEdits, readSettingsDraft, settingsDraftStorage, writeSettingsDraft, type SettingsDraft, type SettingsEdits, type SettingsPanel } from "@/lib/settings-draft";
 
 type Settings = { provider: "kindroid" | "gemma"; kinId: string; modelUrl: string; voiceId: string; thinking: boolean; memory: string; textReady: boolean; voiceReady: boolean; keys: { kindroid: boolean; model: boolean; deepgram: boolean; cartesia: boolean } };
-const defaults: Settings = { provider: "kindroid", kinId: "", modelUrl: "", voiceId: "", thinking: false, memory: "", textReady: false, voiceReady: false, keys: { kindroid: false, model: false, deepgram: false, cartesia: false } };
+const defaults: Settings = { provider: "gemma", kinId: "", modelUrl: "", voiceId: "", thinking: false, memory: "", textReady: false, voiceReady: false, keys: { kindroid: false, model: false, deepgram: false, cartesia: false } };
 type Panel = SettingsPanel;
 const labels: Record<Phase, string> = { idle: "A little space, just for you.", connecting: "Opening your conversation…", listening: "I'm listening.", thinking: "Thinking it through…", speaking: "Talk whenever you're ready." };
 
 export default function Companion() {
   const [savedSettings, setSavedSettings] = useState<Settings>(defaults);
   const [edits, setEdits] = useState<SettingsEdits>({});
-  const settings = { ...savedSettings, ...edits };
-  const secrets = { kindroidKey: edits.kindroidKey ?? "", modelKey: edits.modelKey ?? "", deepgramKey: edits.deepgramKey ?? "", cartesiaKey: edits.cartesiaKey ?? "" };
+  const settings = { ...savedSettings, ...edits, provider: "gemma" as const };
+  const secrets = { modelKey: edits.modelKey ?? "", deepgramKey: edits.deepgramKey ?? "", cartesiaKey: edits.cartesiaKey ?? "" };
   const [loaded, setLoaded] = useState(false);
   const [panel, setPanelState] = useState<Panel>(null);
   const [draftStorageAvailable, setDraftStorageAvailable] = useState(true);
@@ -70,14 +70,6 @@ export default function Companion() {
     try {
       await persistSettings(panel === "memory" ? { memory: settings.memory } : connectionEdits(settingsDraft.current.values));
       setNotice("Saved.");
-    } catch (e) { setNotice(e instanceof Error ? e.message : "Could not save. Your edits are still here."); }
-    finally { setBusy(false); }
-  };
-  const saveKindroidField = async (field: "kindroidKey" | "kinId") => {
-    setBusy(true); setNotice("");
-    try {
-      await persistSettings({ provider: "kindroid", [field]: field === "kindroidKey" ? secrets.kindroidKey : settings.kinId });
-      setNotice(field === "kindroidKey" ? "Kindroid key saved. You can switch apps to copy your Kin AI ID." : "Kin AI ID saved.");
     } catch (e) { setNotice(e instanceof Error ? e.message : "Could not save. Your edits are still here."); }
     finally { setBusy(false); }
   };
@@ -140,7 +132,7 @@ export default function Companion() {
       </aside>
       <main className="conversation">
         <header className="topbar">
-          <div className="topbar-title"><span className="eyebrow">{settings.provider === "kindroid" ? "KINDROID VOICE" : "CONVERSATION"}</span><span>Your space to talk.</span></div>
+          <div className="topbar-title"><span className="eyebrow">GEMMA VOICE</span><span>Your space to talk.</span></div>
           <div className="topbar-actions"><span className="status-pill"><i className={active ? "live-dot" : ""} />{status}</span><Button variant="ghost" size="icon" className="mobile-settings" aria-label="Open connections" onClick={() => open("connections")}><Settings2 /></Button></div>
         </header>
         <section className="voice-space" aria-label="Voice conversation">
@@ -175,27 +167,20 @@ export default function Companion() {
           {active && latency !== null && <p className="latency-note">First audio · {(latency / 1000).toFixed(1)}s</p>}
           <p className="control-note">{active ? "You can interrupt at any time." : settings.voiceReady ? "Allow your microphone when prompted. Headphones help prevent echo." : "One setup. Then it's just a conversation."}</p>
         </section>
-        <footer className="conversation-footer"><span><LockKeyhole size={13} /> Only you can open this space</span><button onClick={() => open("memory")}><Sparkles size={14} /> Your memory <ChevronRight size={14} /></button><span className="footer-model">{settings.provider === "kindroid" ? "KINDROID · CARTESIA" : "GEMMA 4 HERETICAL"}</span></footer>
+        <footer className="conversation-footer"><span><LockKeyhole size={13} /> Only you can open this space</span><button onClick={() => open("memory")}><Sparkles size={14} /> Your memory <ChevronRight size={14} /></button><span className="footer-model">GEMMA 4 HERETICAL</span></footer>
       </main>
       <Dialog open={panel !== null} onOpenChange={isOpen => { if (!isOpen) setPanel(null); }}>
         <DialogContent className="settings-dialog">
-          <DialogHeader><span className="eyebrow warm">YOUR COMPANION</span><DialogTitle>{panel === "memory" ? "A little context goes a long way." : "Make the connection."}</DialogTitle><DialogDescription>{panel === "memory" ? (settings.provider === "kindroid" ? "Your Kin brings its own personality and memory." : "Save what you'd like your companion to know about you.") : "Connect your model and voice services. Saved keys are encrypted on the server."}</DialogDescription></DialogHeader>
+          <DialogHeader><span className="eyebrow warm">YOUR COMPANION</span><DialogTitle>{panel === "memory" ? "A little context goes a long way." : "Make the connection."}</DialogTitle><DialogDescription>{panel === "memory" ? "Save what you'd like your companion to know about you." : "Connect your model and voice services. Saved keys are encrypted on the server."}</DialogDescription></DialogHeader>
           <p className="field-note" role="status">{draftStorageAvailable ? "Unfinished edits stay in this tab for one hour, including after a refresh. Save before closing the tab." : "This browser cannot keep drafts. Save each field before switching apps."}</p>
           {panel === "connections" ? <div className="settings-body">
-            <div className="provider-picker"><label htmlFor="provider">Conversation provider</label><Select value={settings.provider} onValueChange={v => { update("provider", v); setChecks([]); }}><SelectTrigger id="provider" className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="kindroid">Kindroid</SelectItem><SelectItem value="gemma">Gemma · existing model server</SelectItem></SelectContent></Select></div>
-            {settings.provider === "kindroid" ? <div className="connection-group">
-              <div className="connection-heading"><span className="step-number">01</span><div><h3>Your Kindroid</h3><p>Conversation & memory</p></div><span className={"key-state " + (settings.keys.kindroid ? "saved" : "")}>{settings.keys.kindroid ? <Check size={16} /> : <Circle size={13} />}</span></div>
-              <div className="connection-field"><label htmlFor="kindroid-key">Kindroid API key</label><div className="connection-input-row"><Input id="kindroid-key" type="password" autoComplete="new-password" autoCapitalize="none" autoCorrect="off" spellCheck={false} value={secrets.kindroidKey} onChange={e => update("kindroidKey", e.target.value)} placeholder={settings.keys.kindroid ? "Saved · leave blank to keep" : "kn_…"} /><Button variant="outline" onClick={() => saveKindroidField("kindroidKey")} disabled={busy || !loaded || !secrets.kindroidKey.trim()}>Save key</Button></div></div>
-              <div className="connection-field"><label htmlFor="kin-id">Kin AI ID</label><div className="connection-input-row"><Input id="kin-id" value={settings.kinId} onChange={e => update("kinId", e.target.value)} autoComplete="off" autoCapitalize="none" autoCorrect="off" spellCheck={false} placeholder="Your Kin's AI ID" /><Button variant="outline" onClick={() => saveKindroidField("kinId")} disabled={busy || !loaded || !settings.kinId.trim()}>Save ID</Button></div></div>
-              {notice && <p className="settings-notice" role="status">{notice}</p>}
-              <p className="field-note">Find both in Kindroid → Profile settings → API & integrations. Your messages go to this Kin's existing conversation.</p>
-              <a className="setup-link" href="https://kindroid.ai/" target="_blank" rel="noreferrer">Open Kindroid <ArrowUpRight size={15} /></a>
-            </div> : <div className="connection-group"><div className="connection-heading"><span className="step-number">01</span><div><h3>Gemma 4 Heretical</h3><p>Conversation & reasoning · self-hosted</p></div><span className={"key-state " + (settings.keys.model ? "saved" : "")}>{settings.keys.model ? <Check size={16} /> : <Circle size={13} />}</span></div>
+            <div className="connection-group"><div className="connection-heading"><span className="step-number">01</span><div><h3>Gemma 4 Heretical</h3><p>Conversation & reasoning · self-hosted</p></div><span className={"key-state " + (settings.keys.model ? "saved" : "")}>{settings.keys.model ? <Check size={16} /> : <Circle size={13} />}</span></div>
+              <p className="field-note">Gemma needs a running model server. The download contains setup files; it does not start a server.</p>
               <label>Model server URL<Input value={settings.modelUrl} onChange={e => update("modelUrl", e.target.value)} placeholder="https://your-model-server.com" type="url" autoComplete="off" /></label>
               <label>Server access key<Input value={secrets.modelKey} onChange={e => update("modelKey", e.target.value)} placeholder={settings.keys.model ? "Saved · leave blank to keep" : "Your model gateway key"} type="password" autoComplete="new-password" /></label>
               <a className="setup-link" href="/setup" target="_blank" rel="noreferrer">Set up your Gemma model server <ArrowUpRight size={15} /></a>
               <div className="switch-row"><div><label htmlFor="thinking">Deeper reasoning</label><p>More time to think before speaking.</p></div><Switch id="thinking" checked={settings.thinking} onCheckedChange={v => update("thinking", v)} /></div>
-            </div>}
+            </div>
             <div className="connection-group"><div className="connection-heading"><span className="step-number">02</span><div><h3>Deepgram Nova-3</h3><p>Speech recognition</p></div></div>
               <label>Deepgram API key<Input type="password" autoComplete="new-password" value={secrets.deepgramKey} onChange={e => update("deepgramKey", e.target.value)} placeholder={settings.keys.deepgram ? "Saved · leave blank to keep" : "A key with Member permissions"} /></label>
               <a className="setup-link" href="https://console.deepgram.com/" target="_blank" rel="noreferrer">Open Deepgram <ArrowUpRight size={15} /></a>
@@ -208,10 +193,10 @@ export default function Companion() {
 
             </div>
             {checks.length > 0 && <ul className="check-results">{checks.map(c => <li key={c.provider} className={c.ok ? "pass" : "fail"}>{c.ok ? <Check size={16} /> : <X size={16} />}<span><strong>{c.provider}</strong> · {c.message}</span></li>)}</ul>}
-          </div> : settings.provider === "kindroid" ? <div className="settings-body memory-body"><p>Your Kin's backstory, persona, and memory are managed in Kindroid. This app sends your messages directly to that conversation.</p><p>Interrupting stops the voice here. Kindroid may still keep the full generated reply in its chat, including the part you did not hear.</p><a className="setup-link" href="https://kindroid.ai/" target="_blank" rel="noreferrer">Manage memory in Kindroid <ArrowUpRight size={15} /></a></div> : <div className="settings-body memory-body"><label htmlFor="memory">What should I remember?</label><Textarea id="memory" rows={7} value={settings.memory} maxLength={3000} onChange={e => update("memory", e.target.value)} placeholder="Your name, interests, what you're working on, or how you like to talk…" /><p className="field-note">This note and up to 24 recent turns are saved to your account. Only displayed or fully spoken replies are remembered. Audio recordings are not stored by this app; speech providers process your audio.</p><div className="memory-clear">{erase ? <><p>Clear your saved note and all recent conversation memory?</p><Button variant="destructive" onClick={clearMemory} disabled={busy}>Clear all memory</Button><Button variant="ghost" onClick={() => setErase(false)}>Cancel</Button></> : <button onClick={() => setErase(true)}>Clear all memory</button>}</div></div>}
-          {notice && !(panel === "connections" && settings.provider === "kindroid") && <p className="settings-notice" role="status">{notice}</p>}
-          <div className="settings-footer">{panel === "connections" && <Button variant="outline" onClick={check} disabled={busy || !loaded}>Save & test</Button>}{panel === "memory" && settings.provider === "kindroid" ? <Button onClick={() => setPanel(null)}>Close</Button> : <Button onClick={save} disabled={busy || !loaded}>{busy ? <Loader2 className="animate-spin" size={16} /> : <Check size={16} />} Save {panel === "memory" ? "memory" : "connections"}</Button>}</div>
-          {panel === "connections" && <p className="field-note">The test checks access and generates audio. It does not send your Kin a message. Audio is processed by your speech providers; this app does not store recordings.</p>}
+          </div> : <div className="settings-body memory-body"><label htmlFor="memory">What should I remember?</label><Textarea id="memory" rows={7} value={settings.memory} maxLength={3000} onChange={e => update("memory", e.target.value)} placeholder="Your name, interests, what you're working on, or how you like to talk…" /><p className="field-note">This note and up to 24 recent turns are saved to your account. Only displayed or fully spoken replies are remembered. Audio recordings are not stored by this app; speech providers process your audio.</p><div className="memory-clear">{erase ? <><p>Clear your saved note and all recent conversation memory?</p><Button variant="destructive" onClick={clearMemory} disabled={busy}>Clear all memory</Button><Button variant="ghost" onClick={() => setErase(false)}>Cancel</Button></> : <button onClick={() => setErase(true)}>Clear all memory</button>}</div></div>}
+          {notice && <p className="settings-notice" role="status">{notice}</p>}
+          <div className="settings-footer">{panel === "connections" && <Button variant="outline" onClick={check} disabled={busy || !loaded}>Save & test</Button>}<Button onClick={save} disabled={busy || !loaded}>{busy ? <Loader2 className="animate-spin" size={16} /> : <Check size={16} />} Save {panel === "memory" ? "memory" : "connections"}</Button></div>
+          {panel === "connections" && <p className="field-note">The test checks access and generates audio. It checks the installed Gemma model without sending a conversation message. Audio is processed by your speech providers; this app does not store recordings.</p>}
         </DialogContent>
       </Dialog>
     </div>

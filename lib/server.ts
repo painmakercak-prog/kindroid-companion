@@ -4,7 +4,7 @@ import { seal, unseal } from "./crypto.mjs";
 import { validateModelUrl, MODEL, CARTESIA_VERSION, speechPayload } from "./core.mjs";
 
 export type Config = { provider: "kindroid" | "gemma"; kindroidKey: string; kinId: string; modelUrl: string; modelKey: string; deepgramKey: string; cartesiaKey: string; voiceId: string; thinking: boolean };
-export const emptyConfig: Config = { provider: "kindroid", kindroidKey: "", kinId: "", modelUrl: "", modelKey: "", deepgramKey: "", cartesiaKey: "", voiceId: "", thinking: false };
+export const emptyConfig: Config = { provider: "gemma", kindroidKey: "", kinId: "", modelUrl: "", modelKey: "", deepgramKey: "", cartesiaKey: "", voiceId: "", thinking: false };
 export class ApiError extends Error { constructor(message: string, public status = 400) { super(message); } }
 export const json = (value: unknown, status = 200) => Response.json(value, { status, headers: { "Cache-Control": "no-store" } });
 export function identity(request: Request) {
@@ -25,7 +25,7 @@ export async function body(request: Request) {
 function encryptionKey() { return (env as unknown as Record<string, string>).COMPANION_SECRETS_KEY; }
 export async function profile(user: string) {
   const row = await getRawDb().prepare("SELECT config, memory FROM profiles WHERE user_id = ?").bind(user).first<{ config: string; memory: string }>();
-  return { config: row ? { ...emptyConfig, ...await unseal(row.config, user, encryptionKey()) } as Config : { ...emptyConfig }, memory: row?.memory ?? "" };
+  return { config: row ? { ...emptyConfig, ...await unseal(row.config, user, encryptionKey()), provider: "gemma" } as Config : { ...emptyConfig }, memory: row?.memory ?? "" };
 }
 export function publicConfig(config: Config, memory: string) {
   const textReady = config.provider === "kindroid" ? !!(config.kindroidKey && config.kinId) : !!(config.modelUrl && config.modelKey);
@@ -37,25 +37,17 @@ export function publicConfig(config: Config, memory: string) {
 export async function saveProfile(user: string, input: Record<string, unknown>) {
   const current = await profile(user);
   const config = { ...current.config };
-  if (input.provider !== undefined) {
-    if (input.provider !== "kindroid" && input.provider !== "gemma") throw new ApiError("Choose Kindroid or Gemma.");
-    config.provider = input.provider;
-  }
-  if (typeof input.kinId === "string") {
-    const id = input.kinId.trim();
-    if (id && !/^[\w-]{1,160}$/.test(id)) throw new ApiError("Copy your Kin's AI ID from Kindroid's API & integrations settings.");
-    config.kinId = id;
-  }
+  // Older browser tabs cannot reactivate the retired Kindroid connection.
+  config.provider = "gemma";
   if (typeof input.modelUrl === "string") config.modelUrl = validateModelUrl(input.modelUrl.trim());
   if (typeof input.voiceId === "string") {
     if (input.voiceId && !/^[\w-]{1,100}$/.test(input.voiceId)) throw new ApiError("Enter a valid Cartesia voice ID.");
     config.voiceId = input.voiceId;
   }
-  for (const name of ["kindroidKey", "modelKey", "deepgramKey", "cartesiaKey"] as const) {
+  for (const name of ["modelKey", "deepgramKey", "cartesiaKey"] as const) {
     if (typeof input[name] === "string" && (input[name] as string).trim()) {
       const value = (input[name] as string).trim();
       if (value.length > 2048 || /[\r\n]/.test(value)) throw new ApiError("Invalid API key.");
-      if (name === "kindroidKey" && !value.startsWith("kn_")) throw new ApiError("Your Kindroid API key should start with kn_.");
       config[name] = value;
     }
   }

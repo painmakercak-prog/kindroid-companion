@@ -3,7 +3,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Companion · Your space to talk",
-  description: "Talk to your Kindroid with continuous listening and your Cartesia voice.",
+  description: "Talk to Gemma with continuous listening and your Cartesia voice.",
   other: {
     "codex-preview": "development",
   },

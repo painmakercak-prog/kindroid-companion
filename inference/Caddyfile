@@ -1,0 +1,9 @@
+{$MODEL_DOMAIN} {
+    reverse_proxy gateway:8080 {
+        flush_interval -1
+    }
+    header {
+        -Server
+        Cache-Control "no-store"
+    }
+}

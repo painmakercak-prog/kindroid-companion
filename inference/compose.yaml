@@ -10,7 +10,6 @@ services:
     volumes:
       - ollama_models:/root/.ollama
       - ./install-model.sh:/setup/install-model.sh:ro
-    gpus: all
     healthcheck:
       test: ["CMD", "ollama", "list"]
       interval: 15s

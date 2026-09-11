@@ -9,7 +9,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://127.0.0.1:11434").rstrip("/")
-MODEL = "gemma4-heretical"
+MODEL = "mannix/llama3.1-8b-abliterated:q5_k_m"
 KEY = Path(os.environ.get("MODEL_GATEWAY_KEY_FILE", "secrets/model_gateway_key")).read_text().strip()
 if len(KEY) < 32:
     raise SystemExit("Create a random gateway key of at least 32 characters.")
@@ -53,17 +53,18 @@ class Gateway(BaseHTTPRequestHandler):
                     raise ValueError()
                 if len(value["messages"]) > 52:
                     raise ValueError()
-                # Bound this dedicated companion server's memory and generation.
                 options = value.get("options") or {}
                 value["options"] = {
                     "num_ctx": min(max(int(options.get("num_ctx", 8192)), 512), 8192),
                     "num_predict": min(max(int(options.get("num_predict", 512)), 1), 2048),
                     "temperature": min(max(float(options.get("temperature", 0.8)), 0), 1.5),
-                    "top_k": 64, "top_p": 0.95,
+                    "top_k": 64,
+                    "top_p": 0.95,
                 }
                 value["stream"] = True
                 value["keep_alive"] = "10m"
                 value.pop("tools", None)
+                value.pop("think", None)
                 payload = json.dumps(value).encode()
             except (ValueError, TypeError, AttributeError):
                 self.reply(400, "Invalid companion request")
@@ -100,5 +101,5 @@ class Gateway(BaseHTTPRequestHandler):
             CAPACITY.release()
 
 if __name__ == "__main__":
-    print("Authenticated Gemma gateway listening on port 8080.")
+    print("Authenticated Llama 3.1 abliterated gateway listening on port 8080.")
     ThreadingHTTPServer(("0.0.0.0", 8080), Gateway).serve_forever()

@@ -1,35 +1,33 @@
-# Gemma voice companion
+# Llama 3.1 voice companion
 
-The companion uses the supplied `gemma-model-server.zip` setup instead of Kindroid. Existing profiles are read as Gemma profiles, retaining saved model settings, voice credentials and local memory. Older tabs cannot switch the server back to Kindroid. Kindroid conversation history is not imported.
+The companion now uses `mannix/llama3.1-8b-abliterated:q5_k_m` through an authenticated Ollama gateway. Existing encrypted model settings, Deepgram/Cartesia credentials, and local memory are preserved. The internal legacy provider value remains `gemma` for profile compatibility; it no longer selects Gemma weights.
 
 ## What runs where
 
-- The website runs on ChatGPT Sites with authenticated, per-user encrypted settings and D1 conversation memory.
-- A separate machine runs Gemma 4 Heretical through Ollama and the authenticated gateway in `inference/`.
+- The website runs on the existing Cloudflare/Sites stack with authenticated, per-user encrypted settings and D1 conversation memory.
+- A separate machine runs Llama 3.1 8B Abliterated Q5_K_M through Ollama and the authenticated gateway in `inference/`.
 - Deepgram Nova-3 transcribes microphone audio.
-- Cartesia Sonic 3.6 generates streaming 24 kHz PCM audio. The app pins `sonic-3.6-2026-08-27` and API version `2026-08-14`.
+- Cartesia Sonic 3.6 generates streaming 24 kHz PCM audio.
 
-The ZIP is an installer and gateway package, not model weights or a running service. Publishing the website does not provision GPU hosting or install the model. The original package's Sonic-2 notes are historical; the website uses Sonic 3.6.
+The pinned Ollama build is about 5.7 GB. The default Docker stack is CPU-compatible; `inference/compose.gpu.yaml` optionally enables NVIDIA GPU acceleration.
 
 ## Connect the model
 
-1. Run the supplied setup on your model host using `inference/README.md`. It registers `gemma4-heretical` and exposes only authenticated `/api/tags` and `/api/chat` routes through its gateway.
-2. Open Companion → Connections. Save the gateway's HTTPS origin and server access key. Do not expose Ollama directly.
-3. Keep the existing Deepgram and Cartesia connections, or enter them securely in Connections.
-4. Use Save & test to check the installed model and voice services, then start a conversation.
+1. Run the model setup in `inference/README.md`, or download `/llama-model-server.zip` from the setup page.
+2. The installer pulls the exact model `mannix/llama3.1-8b-abliterated:q5_k_m`.
+3. Open Companion → Connections and save the gateway HTTPS origin and access key.
+4. Keep or enter the Deepgram and Cartesia connections, choose a voice, then use Save & test.
 
-Use the exact model name `gemma4-heretical`. The app sends Ollama NDJSON requests, including a system prompt, your saved note and recent local conversation context. Only displayed or fully spoken replies are committed to memory. Thinking is off by default.
+The app sends native Ollama streaming chat requests with the companion system prompt, saved memory note, and recent conversation context. The runtime is intentionally bounded to an 8K context for predictable memory use and latency.
 
-## Secrets and hosting
+## Security
 
-Provider keys are encrypted per user. Preserve the Sites `COMPANION_SECRETS_KEY` across deployments. No API keys or model server credentials belong in Git. The `.env.example` contains only an empty template.
-
-This repository depends on the Cloudflare Worker runtime, a D1 binding named `DB`, and Sites authentication. Independent hosting requires configuring those resources and trusted authentication. GitHub uploads do not automatically deploy the website or the GPU server.
+Ollama itself stays private. The gateway exposes only authenticated `GET /api/tags` and `POST /api/chat`, bounds request sizes/generation, and does not log conversation content. Provider keys remain encrypted per user. Preserve the deployment's `COMPANION_SECRETS_KEY` across releases.
 
 ## Validation
 
 - `npm run build` builds the Worker and website.
-- `node --test tests/*.test.mjs` runs the test suite after building.
-- `python3 -m unittest discover -s tests -p test_gateway.py` checks the supplied gateway.
+- `node --test tests/*.test.mjs` runs the JavaScript tests after building.
+- `python3 -m unittest discover -s tests -p test_gateway.py` checks the model gateway.
 
-Tests exercise simulated model responses, actual Worker execution, client audio decoding, credential preservation and account isolation. They do not verify model quality, live GPU inference or iPhone microphone behavior.
+The tests simulate the external providers; they do not prove live model speed, microphone behavior, or speech-provider credentials on a specific device.

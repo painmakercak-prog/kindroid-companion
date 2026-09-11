@@ -18,7 +18,9 @@ test("reasoning traces never become spoken answer content", () => {
 });
 test("chosen models and speech format stay pinned without a fallback", () => {
   const llm = ollamaPayload([{ role: "user", content: "Hello" }], true);
-  assert.equal(llm.model, "gemma4-heretical"); assert.equal(llm.think, true);
+  assert.equal(llm.model, "mannix/llama3.1-8b-abliterated:q5_k_m");
+  assert.equal("think" in llm, false);
+  assert.equal(llm.options.num_predict, 2048);
   const tts = speechPayload("Hello.", "owned-voice");
   assert.equal(tts.model_id, "sonic-3.6-2026-08-27"); assert.equal(tts.voice, "owned-voice");
   assert.equal(tts.output_format.encoding, "pcm_s16le");

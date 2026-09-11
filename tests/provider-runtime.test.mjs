@@ -7,6 +7,7 @@ import { Miniflare, Log, LogLevel } from "miniflare";
 import ts from "typescript";
 
 const origin = "https://companion.mydomain.com";
+const MODEL = "mannix/llama3.1-8b-abliterated:q5_k_m";
 const credentials = {
   provider: "gemma", modelUrl: "https://models.mydomain.com", modelKey: "gemma-runtime-fixture",
   deepgramKey: "deepgram-runtime-fixture", cartesiaKey: "cartesia-runtime-fixture", voiceId: "runtime-voice",
@@ -36,10 +37,10 @@ test("provider routes run in Workers and never forward credentials through redir
       if (url.hostname === "api.cartesia.ai" && url.pathname === "/tts/bytes") return new Response(new Uint8Array(1024));
       if (url.hostname === "models.mydomain.com" && url.pathname === "/api/chat") {
         const body = await request.json();
-        assert.equal(body.model, "gemma4-heretical");
+        assert.equal(body.model, MODEL);
         return new Response(JSON.stringify({ message: { content: "The connection works." }, done: true }) + "\n");
       }
-      if (url.hostname === "models.mydomain.com" && url.pathname === "/api/tags") return Response.json({ models: [{ name: "gemma4-heretical" }] });
+      if (url.hostname === "models.mydomain.com" && url.pathname === "/api/tags") return Response.json({ models: [{ name: MODEL }] });
       return new Response("Unexpected destination", { status: 500 });
     },
   });
@@ -75,8 +76,6 @@ test("provider routes run in Workers and never forward credentials through redir
   assert.equal(spokenReply.status, 200);
   assert.ok((await spokenReply.arrayBuffer()).byteLength > 0);
 
-  // Exercise the actual client parser, speech queue, PCM decoder and commit
-  // against the compiled Worker; only browser hardware/providers are faked.
   const voiceSource = (await readFile(new URL("../lib/voice.ts", import.meta.url), "utf8"))
     .replace('"./core.mjs"', JSON.stringify(new URL("../lib/core.mjs", import.meta.url).href));
   const voiceJs = ts.transpileModule(voiceSource, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText;
@@ -106,7 +105,7 @@ test("provider routes run in Workers and never forward credentials through redir
       assert.equal(calls.filter(call => call.path === "/api/chat").length - before, 1);
       await session.dispose();
     }
-    assert.ok(played.filter(length => length > 1).length >= 1, "Gemma reply reaches audio playback");
+    assert.ok(played.filter(length => length > 1).length >= 1, "Llama reply reaches audio playback");
   } finally { globalThis.fetch = originalFetch; globalThis.AudioContext = originalAudio; }
 
   for (const [host, path, data, provider] of [
@@ -124,8 +123,8 @@ test("provider routes run in Workers and never forward credentials through redir
   }
   redirectHost = null;
   assert.equal((await request("settings", { provider: "gemma", modelUrl: "https://models.mydomain.com", modelKey: "gemma-runtime-fixture" })).status, 200);
-  const gemmaChecks = await (await request("check", {})).json();
-  assert.ok(gemmaChecks.checks.every(result => result.ok), JSON.stringify(gemmaChecks));
+  const modelChecks = await (await request("check", {})).json();
+  assert.ok(modelChecks.checks.every(result => result.ok), JSON.stringify(modelChecks));
   assert.ok(calls.every(call => call.host !== "unexpected.mydomain.com" && call.host !== "api.kindroid.ai"));
   const remembered = await db.prepare("SELECT assistant_text FROM turns WHERE status = ?").bind("completed").first();
   assert.equal(remembered.assistant_text, "The connection works.");

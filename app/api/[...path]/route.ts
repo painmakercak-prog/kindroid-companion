@@ -62,8 +62,8 @@ async function handle(request: Request, context: Context) {
           const r = await modelFetch(config, "/api/tags", { signal: AbortSignal.timeout(12000) });
           if (!r.ok) throw new Error(`Model server returned ${r.status}.`);
           const data = await r.json() as { models?: { name: string }[] };
-          if (!data.models?.some(m => m.name === MODEL || m.name === MODEL + ":latest")) throw new Error("Install gemma4-heretical on the model server.");
-          return "Gemma model is installed";
+          if (!data.models?.some(m => m.name === MODEL)) throw new Error(`Install ${MODEL} on the model server.`);
+          return "Llama 3.1 8B abliterated is installed";
         })(),
         grant(config).then(() => "Deepgram token created"),
         (async () => {
@@ -74,7 +74,7 @@ async function handle(request: Request, context: Context) {
           return "Cartesia generated audio";
         })(),
       ]);
-      return json({ checks: checks.map((r, i) => ({ provider: ["Gemma", "Deepgram", "Cartesia"][i],
+      return json({ checks: checks.map((r, i) => ({ provider: ["Llama 3.1", "Deepgram", "Cartesia"][i],
         ok: r.status === "fulfilled", message: r.status === "fulfilled" ? r.value : r.reason instanceof Error ? r.reason.message : "Connection failed" })) });
     }
     return json({ error: "Not found." }, 404);
